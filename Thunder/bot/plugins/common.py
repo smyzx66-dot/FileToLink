@@ -42,12 +42,18 @@ async def start_command(bot: Client, msg: Message):
     if len(msg.command) == 2:
         payload = msg.command[1]
         
-        if payload == "start":
-            pass
-        else:
-            token = await db.token_col.find_one({"token": payload})
-            if token:
-                if token["user_id"] != user.id:
+        if payload != "start":
+            # Try to find token
+            tokens = await db._read_file(db.tokens_file)
+            token_found = None
+            
+            for token in tokens:
+                if token.get('token') == payload:
+                    token_found = token
+                    break
+            
+            if token_found:
+                if token_found['user_id'] != user.id:
                     try:
                         return await msg.reply_text(text=MSG_TOKEN_FAILED.format(
                             reason="This activation link is not for your account.",
@@ -60,7 +66,7 @@ async def start_command(bot: Client, msg: Message):
                             error_id=str(int(time.time()))[-8:]
                         ))
                 
-                if token.get("activated"):
+                if token_found.get("activated"):
                     try:
                         return await msg.reply_text(text=MSG_TOKEN_FAILED.format(
                             reason="Token has already been activated.",
@@ -73,13 +79,18 @@ async def start_command(bot: Client, msg: Message):
                             error_id=str(int(time.time()))[-8:]
                         ))
                 
+                # Activate token
                 now = datetime.utcnow()
                 exp = now + timedelta(hours=Var.TOKEN_TTL_HOURS)
                 
-                await db.token_col.update_one(
-                    {"token": payload, "user_id": user.id},
-                    {"$set": {"activated": True, "created_at": now, "expires_at": exp}}
-                )
+                # Update token in file
+                tokens_list = await db._read_file(db.tokens_file)
+                for t in tokens_list:
+                    if t.get('token') == payload and t.get('user_id') == user.id:
+                        t['activated'] = True
+                        t['created_at'] = now.isoformat()
+                        t['expires_at'] = exp.isoformat()
+                await db._write_file(db.tokens_file, tokens_list)
                 
                 hrs = round((exp - now).total_seconds() / 3600, 1)
                 try:

@@ -100,8 +100,8 @@ class RateLimiter:
                 return is_auth
 
         try:
-            authorized_user = await db.authorized_users_col.find_one({"user_id": user_id})
-            is_auth = bool(authorized_user)
+            # Use local JSON database instead of MongoDB
+            is_auth = await db.is_user_authorized(user_id)
             self.auth_cache[user_id] = (is_auth, current_time)
             return is_auth
         except Exception as e:
